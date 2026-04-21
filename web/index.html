@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sovereign AI</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="/eel.js"></script>
+</head>
+<body>
+    <div class="app-container">
+
+        <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-circle"></div>
+                <div class="header-text">
+                    <h1>Sovereign AI</h1>
+                    <span class="version" id="model-badge">whisper / small</span>
+                </div>
+            </div>
+
+            <div class="nav-section-title">NAVIGATION</div>
+            <nav class="navigation">
+                <div class="nav-item active" data-page="dashboard">
+                    <div class="active-indicator"></div>
+                    <span class="nav-icon">🧠</span>
+                    <span class="nav-label">Dashboard</span>
+                </div>
+                <div class="nav-item" data-page="commands">
+                    <span class="nav-icon">🎤</span>
+                    <span class="nav-label">Voice Commands</span>
+                </div>
+                <div class="nav-item" data-page="macros">
+                    <span class="nav-icon">⚡</span>
+                    <span class="nav-label">Macros</span>
+                </div>
+                <div class="nav-item" data-page="log">
+                    <span class="nav-icon">💾</span>
+                    <span class="nav-label">History</span>
+                </div>
+                <div class="nav-item" data-page="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Settings</span>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="sidebar-status">Ready</span>
+            </div>
+        </aside>
+
+        <!-- ── Main Content ─────────────────────────────────────────────── -->
+        <main class="content">
+
+            <!-- ══ DASHBOARD PAGE ═══════════════════════════════════════════ -->
+            <div class="page active" id="page-dashboard">
+                <div class="top-header">
+                    <div class="page-title">Intelligence Dashboard</div>
+                    <div class="header-right">
+                        <span class="api-badge" id="api-badge">⚠ No API Key</span>
+                        <span class="model-chip" id="gemini-chip">gemini-2.0-flash</span>
+                    </div>
+                </div>
+                <div class="dashboard-scroll">
+
+                    <!-- Speaking pill / visualizer -->
+                    <section class="mega-card pill-container">
+                        <h2 class="pill-title" id="pill-title">AWAITING COMMAND</h2>
+                        <div class="pill-visualizer">
+                            <div class="eq-bars" id="eq-bars"></div>
+                        </div>
+                        <p class="pill-status" id="pill-sub">Hold Right Alt anywhere to dictate</p>
+                    </section>
+
+                    <!-- Stats row -->
+                    <section class="stats-row">
+                        <div class="card stat-card">
+                            <div class="stat-value" id="stat-words-today">0</div>
+                            <div class="stat-label">WORDS TODAY</div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="stat-value" id="stat-words-total">0</div>
+                            <div class="stat-label">WORDS TOTAL</div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="stat-value" id="stat-sessions">0</div>
+                            <div class="stat-label">SESSIONS</div>
+                        </div>
+                        <div class="card stat-card">
+                            <div class="stat-value" id="stat-macros">0</div>
+                            <div class="stat-label">MACROS SET</div>
+                        </div>
+                    </section>
+
+                    <!-- Recent dictations -->
+                    <div class="card">
+                        <div class="card-title">RECENT DICTATIONS</div>
+                        <div class="intercept-list" id="intercept-list">
+                            <div class="empty-state">No dictations yet — hold Right Alt to start</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ══ VOICE COMMANDS PAGE ═══════════════════════════════════════ -->
+            <div class="page" id="page-commands">
+                <div class="top-header">
+                    <div class="page-title">Voice Commands</div>
+                </div>
+                <div class="dashboard-scroll">
+
+                    <div class="card">
+                        <div class="card-title">ACTIVE WAKE WORD</div>
+                        <div class="wake-word-display" id="wake-word-display">"assistant"</div>
+                        <p class="hint">Say this first, then your question. Gemini answers and speaks aloud.</p>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">WRITE A PROMPT</div>
+                        <div class="cmd-phrase" id="write-phrase-display">"write a prompt, ..."</div>
+                        <p class="hint">Say your trigger phrase followed by your idea. Gemini writes finished text and pastes it at your cursor.</p>
+                        <div class="example-row">
+                            <span class="example-label">Example:</span>
+                            <span class="example-text">"write a prompt, a professional apology email to a client"</span>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">EDITING COMMANDS</div>
+                        <div class="cmd-list">
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"fix that"</span>
+                                <span class="cmd-desc">Rewrites clipboard text for clarity &amp; grammar</span>
+                            </div>
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"make that formal"</span>
+                                <span class="cmd-desc">Rewrites clipboard in professional tone</span>
+                            </div>
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"make that shorter"</span>
+                                <span class="cmd-desc">Concise version of clipboard text</span>
+                            </div>
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"make that an email"</span>
+                                <span class="cmd-desc">Restructures clipboard as a professional email</span>
+                            </div>
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"make that bullet points"</span>
+                                <span class="cmd-desc">Converts clipboard to a bullet list</span>
+                            </div>
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"make that casual"</span>
+                                <span class="cmd-desc">Friendly, conversational rewrite</span>
+                            </div>
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"make that longer"</span>
+                                <span class="cmd-desc">Expands clipboard with more detail</span>
+                            </div>
+                            <div class="cmd-item">
+                                <span class="cmd-trigger">"read this"</span>
+                                <span class="cmd-desc">Reads clipboard aloud via neural TTS</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ══ MACROS PAGE ════════════════════════════════════════════════ -->
+            <div class="page" id="page-macros">
+                <div class="top-header">
+                    <div class="page-title">Voice Macros</div>
+                </div>
+                <div class="dashboard-scroll">
+
+                    <div class="card">
+                        <div class="card-title">ADD NEW MACRO</div>
+                        <p class="hint" style="margin-bottom:16px">Say the trigger phrase exactly to instantly paste any saved text.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Trigger phrase (what you say)</label>
+                                <input type="text" id="mac-trigger" placeholder='e.g. "my email"' class="field-input green-field">
+                            </div>
+                            <div class="form-group">
+                                <label>Text to paste</label>
+                                <input type="text" id="mac-expansion" placeholder="e.g. austin@example.com" class="field-input">
+                            </div>
+                        </div>
+                        <button class="action-btn green-btn" id="add-macro-btn">+ Add Macro</button>
+                        <div class="save-feedback" id="macro-feedback"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">SAVED MACROS</div>
+                        <div id="macro-list">
+                            <div class="empty-state">No macros yet</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ══ HISTORY PAGE ═══════════════════════════════════════════════ -->
+            <div class="page" id="page-log">
+                <div class="top-header">
+                    <div class="page-title">Dictation History</div>
+                </div>
+                <div class="dashboard-scroll">
+                    <div class="card">
+                        <div class="card-title">ALL DICTATIONS</div>
+                        <div class="intercept-list full-log" id="full-log">
+                            <div class="empty-state">No dictations yet</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══ SETTINGS PAGE ══════════════════════════════════════════════ -->
+            <div class="page" id="page-settings">
+                <div class="top-header">
+                    <div class="page-title">Settings</div>
+                </div>
+                <div class="dashboard-scroll">
+
+                    <!-- Microphone -->
+                    <div class="card">
+                        <div class="card-title">MICROPHONE</div>
+                        <p class="hint">Select which mic the app listens on. Changes take effect immediately.</p>
+                        <div class="input-row" style="margin-top:12px">
+                            <select id="mic-select" class="field-input" style="flex:1;cursor:pointer">
+                                <option>Loading microphones…</option>
+                            </select>
+                            <button class="action-btn green-btn" id="save-mic-btn">Set Mic</button>
+                        </div>
+                        <div class="save-feedback" id="mic-feedback"></div>
+                    </div>
+
+                    <!-- Gemini API key -->
+                    <div class="card">
+                        <div class="card-title">GEMINI API KEY</div>
+                        <p class="hint">Free at <a href="#" class="link">aistudio.google.com</a>. Stored locally only.</p>
+                        <div class="input-row">
+                            <input type="password" id="api-key-input" placeholder="Paste your key here…" class="field-input">
+                            <button class="action-btn" id="save-key-btn">Save</button>
+                        </div>
+                        <div class="save-feedback" id="key-feedback"></div>
+                    </div>
+
+                    <!-- Wake word -->
+                    <div class="card">
+                        <div class="card-title">WAKE WORD</div>
+                        <p class="hint">Say this at the start of a dictation to activate AI mode.</p>
+                        <div class="input-row">
+                            <input type="text" id="wake-word-input" class="field-input green-field" placeholder="assistant">
+                            <button class="action-btn green-btn" id="save-ww-btn">Save</button>
+                        </div>
+                        <div class="save-feedback" id="ww-feedback"></div>
+                    </div>
+
+                    <!-- Write prompt phrase -->
+                    <div class="card">
+                        <div class="card-title">WRITE PROMPT TRIGGER</div>
+                        <p class="hint">Say this phrase, then your idea, to have Gemini write and paste text.</p>
+                        <div class="input-row">
+                            <input type="text" id="wp-phrase-input" class="field-input orange-field" placeholder="write a prompt">
+                            <button class="action-btn orange-btn" id="save-wp-btn">Save</button>
+                        </div>
+                        <div class="save-feedback" id="wp-feedback"></div>
+                    </div>
+
+                    <!-- Gemini model -->
+                    <div class="card">
+                        <div class="card-title">GEMINI MODEL</div>
+                        <div class="pill-selector" id="model-selector">
+                            <div class="sel-option" data-model="gemini-2.5-flash">2.5 Flash ✦</div>
+                            <div class="sel-option" data-model="gemini-2.5-pro">2.5 Pro</div>
+                            <div class="sel-option" data-model="gemini-2.0-flash">2.0 Flash</div>
+                            <div class="sel-option" data-model="gemini-2.0-flash-lite">2.0 Lite</div>
+                        </div>
+                    </div>
+
+                    <!-- Whisper model -->
+                    <div class="card">
+                        <div class="card-title">WHISPER TRANSCRIPTION MODEL</div>
+                        <div class="pill-selector" id="whisper-selector">
+                            <div class="sel-option" data-wmodel="tiny">Tiny</div>
+                            <div class="sel-option" data-wmodel="base">Base</div>
+                            <div class="sel-option" data-wmodel="small">Small</div>
+                            <div class="sel-option" data-wmodel="medium">Medium</div>
+                            <div class="sel-option" data-wmodel="large-v3">Large-v3</div>
+                        </div>
+                    </div>
+
+                    <!-- Auto-punctuate toggle -->
+                    <div class="card">
+                        <div class="card-title">AUTO-PUNCTUATE</div>
+                        <div class="toggle-row">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="auto-punct-toggle">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-text" id="auto-punct-text">Off — text pasted exactly as spoken</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
