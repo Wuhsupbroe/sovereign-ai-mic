@@ -11,8 +11,10 @@ import json
 import os
 import random
 import subprocess
+import sys
 import ctypes
-import ctypes.wintypes
+if sys.platform == 'win32':
+    import ctypes.wintypes
 import urllib.request
 import urllib.error
 import tempfile
@@ -51,6 +53,10 @@ try:
     _PYGAME_AVAILABLE = True
 except Exception:
     _PYGAME_AVAILABLE = False
+
+# ── Platform adapter (cross-platform OS integration) ──────────────────────────
+from platform_adapter import get_adapter as _get_platform_adapter
+_platform = _get_platform_adapter()
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 SAMPLE_RATE = 16000
@@ -237,10 +243,13 @@ def _apply_win11_style(hwnd: int) -> None:
         pass
 
 def _get_root_hwnd(root) -> int:
-    """Return the real top-level HWND for a Tk/CTk root window."""
+    """Return the real top-level HWND for a Tk/CTk root window (Windows only)."""
     child = root.winfo_id()
-    parent = ctypes.windll.user32.GetParent(child)
-    return parent if parent else child
+    try:
+        parent = ctypes.windll.user32.GetParent(child)
+        return parent if parent else child
+    except Exception:
+        return child
 
 
 def _apply_taskbar_icon(hwnd: int, ico_path: str, tk_root=None) -> None:
@@ -341,13 +350,17 @@ class DonutChart(tk.Canvas):
                          fill=TEXT_MAIN)
 
 
-# ── Monitor enumeration (no extra packages needed) ─────────────────────────────
-class _RECT(ctypes.Structure):
-    _fields_ = [("left",   ctypes.c_long), ("top",    ctypes.c_long),
-                ("right",  ctypes.c_long), ("bottom", ctypes.c_long)]
-
+# ── Monitor enumeration ────────────────────────────────────────────────────────
 def _get_monitors():
     """Return list of (x, y, w, h) for every connected monitor."""
+    if sys.platform != 'win32':
+        return _platform.get_monitors()
+
+    # Windows: use Win32 EnumDisplayMonitors via ctypes
+    class _RECT(ctypes.Structure):
+        _fields_ = [("left",   ctypes.c_long), ("top",    ctypes.c_long),
+                    ("right",  ctypes.c_long), ("bottom", ctypes.c_long)]
+
     monitors = []
     _MONITORENUMPROC = ctypes.WINFUNCTYPE(
         ctypes.c_bool,
@@ -359,8 +372,11 @@ def _get_monitors():
         monitors.append((r.left, r.top, r.right - r.left, r.bottom - r.top))
         return True
 
-    ctypes.windll.user32.EnumDisplayMonitors(
-        None, None, _MONITORENUMPROC(_cb), 0)
+    try:
+        ctypes.windll.user32.EnumDisplayMonitors(
+            None, None, _MONITORENUMPROC(_cb), 0)
+    except Exception:
+        pass
     return monitors or [(0, 0, 1920, 1080)]
 
 
@@ -392,6 +408,9 @@ def _compute_rect(mx, my, mw, mh, position):
 
 def _find_windows_by_pid(pid):
     """Return visible window handles belonging to a process ID."""
+    if sys.platform != 'win32':
+        return _platform.find_windows_by_pid(pid)
+
     windows = []
     WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_ulong, ctypes.c_long)
 
@@ -403,7 +422,10 @@ def _find_windows_by_pid(pid):
                 windows.append(hwnd)
         return True
 
-    ctypes.windll.user32.EnumWindows(WNDENUMPROC(_cb), 0)
+    try:
+        ctypes.windll.user32.EnumWindows(WNDENUMPROC(_cb), 0)
+    except Exception:
+        pass
     return windows
 
 
@@ -614,6 +636,13 @@ def _get_pill_font(size: int) -> "ImageFont.FreeTypeFont":
         r"C:\Windows\Fonts\segoeui.ttf",
         r"C:\Windows\Fonts\arialbd.ttf",
         r"C:\Windows\Fonts\arial.ttf",
+        # macOS system fonts
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial Bold.ttf",
+        "/Library/Fonts/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        # Linux fallbacks
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     ]
@@ -722,8 +751,8 @@ class DictationApp:
         self._char_blink_next  = 0.0   # set after UI builds
         # hotkey
         self._config          = self._load_config()
-        self._hotkey_str      = self._config.get("hotkey_str",  "Key.alt_r")
-        self._hotkey_display  = self._config.get("hotkey_display", "Right Alt")
+        self._hotkey_str      = self._config.get("hotkey_str",  _platform.default_hotkey()[0])
+        self._hotkey_display  = self._config.get("hotkey_display", _platform.default_hotkey()[1])
         self.capturing_hotkey = False
         self._capture_btn     = None   # assigned after UI build
 
@@ -791,7 +820,8 @@ class DictationApp:
             with open(CONFIG_FILE) as f:
                 cfg = json.load(f)
         except Exception:
-            cfg = {"hotkey_str": "Key.alt_r", "hotkey_display": "Right Alt"}
+            _key_str, _key_display = _platform.default_hotkey()
+            cfg = {"hotkey_str": _key_str, "hotkey_display": _key_display}
 
         # ── Migrate old apps format (list of strings → list of dicts) ───────────
         apps = cfg.get("codeword_apps", [])
@@ -839,13 +869,17 @@ class DictationApp:
         _icon_path = os.path.join(HERE, "icon.ico")
 
         def _glass_init():
-            hwnd = _get_root_hwnd(self.root)
-            # Dark acrylic — deep navy tint at 98% opacity
-            _apply_acrylic(hwnd, tint=0xFA1C1C1E)
-            _apply_win11_style(hwnd)
-            # Force window into taskbar + set icon (overrideredirect hides it otherwise)
-            if os.path.exists(_icon_path):
-                _apply_taskbar_icon(hwnd, _icon_path)
+            if sys.platform == 'win32':
+                hwnd = _get_root_hwnd(self.root)
+                # Dark acrylic — deep navy tint at 98% opacity
+                _apply_acrylic(hwnd, tint=0xFA1C1C1E)
+                _apply_win11_style(hwnd)
+                # Force window into taskbar + set icon (overrideredirect hides it otherwise)
+                if os.path.exists(_icon_path):
+                    _apply_taskbar_icon(hwnd, _icon_path)
+            else:
+                # macOS/Linux: set icon via tkinter iconphoto
+                _platform.set_app_icon(self.root, _icon_path)
 
         self.root.after(200, _glass_init)
 
@@ -1563,7 +1597,8 @@ class DictationApp:
         elif _TTS_AVAILABLE:
             # ── pyttsx3 fallback voice picker ─────────────────────────────────
             tk.Label(tts_inner,
-                     text="Windows SAPI voices. For richer neural voices install edge-tts.",
+                     text=(_platform.pyttsx3_label() +
+                           " — For richer neural voices install edge-tts."),
                      bg=CARD_BG, fg=TEXT_SUB,
                      font=("Helvetica Neue", 11)).pack(anchor="w", pady=(6, 10))
 
@@ -1587,7 +1622,9 @@ class DictationApp:
 
         else:
             tk.Label(tts_inner,
-                     text="⚠️  No TTS backend. Run install.bat to add neural voice support.",
+                     text=("⚠️  No TTS backend. "
+                           "Run install.bat (Windows) or install.sh (macOS/Linux) "
+                           "to add neural voice support."),
                      bg=CARD_BG, fg="#ff3b30",
                      font=("Helvetica Neue", 11)).pack(anchor="w", pady=(6, 0))
 
@@ -1947,7 +1984,7 @@ class DictationApp:
             pass
 
     def _get_tts_voices(self):
-        """Return list of Windows SAPI voice names via pyttsx3."""
+        """Return list of system TTS voice names via pyttsx3."""
         if not _TTS_AVAILABLE:
             return ["(install pyttsx3)"]
         try:
@@ -2343,11 +2380,6 @@ class DictationApp:
         apps      = self._config.get("codeword_apps", [])
         monitors  = _get_monitors()
 
-        SWP_NOZORDER    = 0x0004
-        SWP_SHOWWINDOW  = 0x0040
-        SW_RESTORE      = 9
-        SW_MAXIMIZE     = 3
-
         for app in apps:
             # Support both old string format and new dict format
             if isinstance(app, str):
@@ -2391,20 +2423,8 @@ class DictationApp:
             rx, ry, rw, rh = _compute_rect(mx, my, mw, mh, position)
 
             try:
-                u32 = ctypes.windll.user32
-                if position == "maximized":
-                    # Move to the target monitor first, then maximise
-                    u32.ShowWindow(hwnd, SW_RESTORE)
-                    time.sleep(0.05)
-                    u32.SetWindowPos(hwnd, 0, mx, my, mw, mh,
-                                     SWP_NOZORDER | SWP_SHOWWINDOW)
-                    time.sleep(0.05)
-                    u32.ShowWindow(hwnd, SW_MAXIMIZE)
-                else:
-                    u32.ShowWindow(hwnd, SW_RESTORE)
-                    time.sleep(0.05)
-                    u32.SetWindowPos(hwnd, 0, rx, ry, rw, rh,
-                                     SWP_NOZORDER | SWP_SHOWWINDOW)
+                maximize = (position == "maximized")
+                _platform.place_window(hwnd, rx, ry, rw, rh, maximize=maximize)
                 self._diag_add(
                     f"📐 Placed {os.path.basename(path)} → Monitor {mon_idx+1} / {position}")
             except Exception as e:
@@ -2707,7 +2727,7 @@ class DictationApp:
     def _start_mic_test(self):
         if self.recording or self.transcribing:
             self._test_status.configure(
-                text="⚠️  Can't test while recording — release Right Alt first",
+                text=f"⚠️  Can't test while recording — release {self._hotkey_display} first",
                 fg="#ff3b30")
             return
 
@@ -2967,35 +2987,27 @@ class DictationApp:
     _PILL_S = 3   # supersampling scale
 
     def _build_pill(self):
+        # On non-Windows, use a dark background instead of chroma-key transparency
+        _pill_bg_color = PILL_CHROMA if sys.platform == 'win32' else PILL_BG
+
         self.pill = tk.Toplevel(self.root)
         self.pill.overrideredirect(True)
         self.pill.attributes("-topmost", True)
-        self.pill.attributes("-transparentcolor", PILL_CHROMA)
+        if sys.platform == 'win32':
+            # Chroma-key transparency: pixels of PILL_CHROMA become see-through
+            self.pill.attributes("-transparentcolor", PILL_CHROMA)
         self.pill.attributes("-alpha", 0.88)  # Global window translucency for frosted glass effect
-        self.pill.configure(bg=PILL_CHROMA)
+        self.pill.configure(bg=_pill_bg_color)
 
-        # ── EXTREMELY CRITICAL: Prevent the notification pill from stealing focus ──
-        # If the pill steals focus, the dictation Ctrl+V paste gets sent to the wrong window.
-        try:
-            import ctypes
-            hwnd = self.pill.winfo_id()
-            
-            # For overrideredirect tkinter windows, we must patch both the child and wrapper
-            GWL_EXSTYLE = -20
-            WS_EX_NOACTIVATE = 0x08000000
-            
-            for target_hwnd in (hwnd, ctypes.windll.user32.GetParent(hwnd)):
-                if target_hwnd:
-                    ex = ctypes.windll.user32.GetWindowLongW(target_hwnd, GWL_EXSTYLE)
-                    ctypes.windll.user32.SetWindowLongW(target_hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE)
-        except Exception as e:
-            print(f"Failed to patch window styles: {e}")
+        # ── Prevent the notification pill from stealing keyboard focus ────────────
+        # If the pill steals focus, the dictation paste gets sent to the wrong window.
+        _platform.prevent_pill_focus_steal(self.pill)
 
         self.pill.withdraw()
 
         self._pc = tk.Canvas(self.pill,
                              width=PILL_W, height=PILL_H,
-                             bg=PILL_CHROMA, highlightthickness=0)
+                             bg=_pill_bg_color, highlightthickness=0)
         self._pc.pack()
 
         # Pre-render static pill background (RGBA, transparent outside pill)
@@ -3003,7 +3015,7 @@ class DictationApp:
 
         # Single canvas image item — updated every animation frame
         blank = ImageTk.PhotoImage(
-            Image.new("RGB", (PILL_W, PILL_H), _hex_to_rgb(PILL_CHROMA)))
+            Image.new("RGB", (PILL_W, PILL_H), _hex_to_rgb(_pill_bg_color)))
         self._pill_pimg  = blank
         self._pill_cv_id = self._pc.create_image(0, 0, anchor="nw", image=blank)
 
@@ -3059,8 +3071,11 @@ class DictationApp:
                    VIZ_X + VIZ_W - S, VIZ_Y + VIZ_H - S,
                    viz_r, outline=inset_col, width=max(1, S))
 
-        # ── Composite on chroma background ────────────────────────────────────
-        chroma_bg = Image.new("RGBA", (W, H), (*_hex_to_rgb(PILL_CHROMA), 255))
+        # ── Composite on window background ────────────────────────────────────
+        # On Windows, use chroma-key color (becomes transparent via -transparentcolor).
+        # On macOS/Linux, use the pill background color (dark card look).
+        pill_win_bg = PILL_CHROMA if sys.platform == 'win32' else PILL_BG
+        chroma_bg = Image.new("RGBA", (W, H), (*_hex_to_rgb(pill_win_bg), 255))
         composed  = Image.alpha_composite(chroma_bg, img)
 
         return composed.convert("RGB").resize((PILL_W, PILL_H), Image.LANCZOS)
@@ -3165,8 +3180,11 @@ class DictationApp:
                             self._pill_font_status, status_col, PILL_W)
 
         # ── Composite and push to floating pill canvas ─────────────────────────
+        # On Windows: use chroma-key base (transparent corners via -transparentcolor).
+        # On macOS/Linux: use solid pill background (dark HUD look).
+        _pill_win_bg  = PILL_CHROMA if sys.platform == 'win32' else PILL_BG
         chroma_base   = Image.new("RGBA", (PILL_W, PILL_H),
-                                  (*_hex_to_rgb(PILL_CHROMA), 255))
+                                  (*_hex_to_rgb(_pill_win_bg), 255))
         floating_bg   = Image.alpha_composite(chroma_base, bg_rgba)
         floating_frame = Image.alpha_composite(floating_bg, frame_layer)
 
@@ -3214,21 +3232,24 @@ class DictationApp:
 
     def _build_char_window(self):
         """Build the transparent floating character window (hidden until AI speaks)."""
+        _char_bg = PILL_CHROMA if sys.platform == 'win32' else PILL_BG
+
         w = self._char_win = tk.Toplevel(self.root)
         w.overrideredirect(True)
         w.attributes("-topmost", True)
-        w.attributes("-transparentcolor", PILL_CHROMA)
-        w.configure(bg=PILL_CHROMA)
+        if sys.platform == 'win32':
+            w.attributes("-transparentcolor", PILL_CHROMA)
+        w.configure(bg=_char_bg)
         w.withdraw()
 
         self._char_canvas = tk.Canvas(
             w, width=CHAR_WIN_W, height=CHAR_WIN_H,
-            bg=PILL_CHROMA, highlightthickness=0)
+            bg=_char_bg, highlightthickness=0)
         self._char_canvas.pack()
 
         # Single canvas image item updated each frame (same pattern as the pill)
         blank = ImageTk.PhotoImage(
-            Image.new("RGB", (CHAR_WIN_W, CHAR_WIN_H), _hex_to_rgb(PILL_CHROMA)))
+            Image.new("RGB", (CHAR_WIN_W, CHAR_WIN_H), _hex_to_rgb(_char_bg)))
         self._char_pimg  = blank
         self._char_cv_id = self._char_canvas.create_image(0, 0, anchor="nw", image=blank)
         self._char_blink_next = time.time() + 3.5
@@ -3318,8 +3339,9 @@ class DictationApp:
         }.get(style, self._pil_robot)
         draw_fn(draw, cx, cy + bob, color, S, mouth_open, blinking)
 
-        # Composite RGBA onto PILL_CHROMA background → downsample → PhotoImage
-        bg = Image.new("RGB", (W, H), _hex_to_rgb(PILL_CHROMA))
+        # Composite RGBA onto window background → downsample → PhotoImage
+        _char_win_bg = PILL_CHROMA if sys.platform == 'win32' else PILL_BG
+        bg = Image.new("RGB", (W, H), _hex_to_rgb(_char_win_bg))
         bg.paste(img, mask=img.split()[3])
         frame = bg.resize((CHAR_WIN_W, CHAR_WIN_H), Image.LANCZOS)
 
@@ -3523,7 +3545,7 @@ class DictationApp:
                 text=f"whisper / {name}"))
             self.root.after(0, lambda: self._set_status(
                 "Ready",
-                "Hold  Right Alt  anywhere to dictate",
+                f"Hold  {self._hotkey_display}  anywhere to dictate",
                 GREEN_DONUT))
             self.root.after(0, self._refresh_diag_model)
             self._diag_add(f"✅ Model whisper/{name} ready")
@@ -3583,7 +3605,7 @@ class DictationApp:
 
         self.root.after(0, lambda: self._set_status(
             "Listening…",
-            "Speak now — release  Right Alt  to stop",
+            f"Speak now — release  {self._hotkey_display}  to stop",
             GREEN_DONUT))
         self.root.after(0, self._show_pill)
 
@@ -3867,7 +3889,7 @@ class DictationApp:
     def _reset_ready(self):
         self.root.after(0, self._hide_pill)
         self.root.after(0, lambda: self._set_status(
-            "Ready", "Hold  Right Alt  anywhere to dictate", GREEN_DONUT))
+            "Ready", f"Hold  {self._hotkey_display}  anywhere to dictate", GREEN_DONUT))
 
     # ════════════════════════════════════════════════════════════════════════════
     #  Typing
@@ -3875,53 +3897,7 @@ class DictationApp:
     def _type_text(self, text):
         try:
             self.root.after(0, self._hide_pill)
-
-            old_clipboard = ""
-            try:
-                old_clipboard = pyperclip.paste()
-            except Exception:
-                pass
-
-            # 1. Load dictated text securely into clipboard
-            pyperclip.copy(text)
-            
-            # Wait gently to ensure hardware clipboard registers the copy
-            time.sleep(0.15) 
-
-            # 2. Bulletproof Paste via native ctypes (bypasses pynput bugs entirely)
-            import ctypes
-            VK_CONTROL = 0x11
-            VK_V = 0x56
-            VK_LWIN = 0x5B
-            VK_RWIN = 0x5C
-            VK_SHIFT = 0x10
-            KEYEVENTF_KEYUP = 0x0002
-            
-            try:
-                # FIRST: Aggressively release shift/win keys, but NEVER Alt (VK_MENU) because
-                # explicitly releasing Alt natively selects the Window Menu Bar and steals focus!
-                for mod in [VK_LWIN, VK_RWIN, VK_SHIFT]:
-                    ctypes.windll.user32.keybd_event(mod, 0, KEYEVENTF_KEYUP, 0)
-                
-                time.sleep(0.02)
-                
-                # Press Ctrl (Ctrl natively cancels any active Windows Menu Bar)
-                ctypes.windll.user32.keybd_event(VK_CONTROL, 0, 0, 0)
-                time.sleep(0.02)
-                # Press V
-                ctypes.windll.user32.keybd_event(VK_V, 0, 0, 0)
-                time.sleep(0.02)
-                # Release V
-                ctypes.windll.user32.keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0)
-                time.sleep(0.02)
-                # Release Ctrl
-                ctypes.windll.user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
-            except Exception as pe:
-                print(f"CTypes paste failed: {pe}")
-                
-            # No longer restoring the old clipboard. Restoring the clipboard causes 
-            # race conditions where the target app processes the Ctrl+V *after* we restore it.
-            
+            _platform.inject_text(text)
         except Exception as e:
             print(f"Type error: {e}")
 
@@ -4520,7 +4496,7 @@ class DictationApp:
             elif _TTS_AVAILABLE:
                 self._speak_pyttsx3(sentences)
             else:
-                self._diag_add("⚠️ No TTS backend — run install.bat")
+                self._diag_add("⚠️ No TTS backend — run install.bat / install.sh")
         finally:
             self._tts_busy.release()
 
