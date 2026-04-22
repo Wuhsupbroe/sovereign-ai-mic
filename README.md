@@ -42,7 +42,7 @@ This will launch a beautiful Web UI Control Center in a Chromium shell. Your flo
 Just **Hold `Right Alt`** (or your mapped hotkey) and speak. Your voice is transcribed and instantly injected into any active window when you release. 
 
 ### Local config (`config.json`)
-- Location: project root (`/home/runner/work/sovereign-ai-mic/sovereign-ai-mic/config.json` in this repo layout).
+- Location: project root (for example, `<project-root>/config.json`, next to `dictation.py`).
 - The app auto-creates this file on first run and updates it when you save settings in the UI.
 - The file is intentionally gitignored, so your Gemini API key and personal macros stay local.
 
@@ -64,5 +64,5 @@ Example structure:
 ```
 
 Notes:
-- Get your Gemini key from `aistudio.google.com`, then save it in the app's AI page (or set `gemini_api_key` manually).
+- Get your Gemini key from [aistudio.google.com](https://aistudio.google.com), then save it in the app's AI page (or set `gemini_api_key` manually).
 - Add any personal/internal info you want to keep private in `voice_macros` (or related settings) inside `config.json`.
